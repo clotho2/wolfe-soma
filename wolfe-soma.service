@@ -19,6 +19,8 @@ Environment=NODE_ENV=production
 Environment=SOMA_PORT=3002
 Environment=SOMA_UPDATE_INTERVAL=1.0
 Environment=LOG_LEVEL=info
+# Physiological state logging interval in seconds (set to 0 to disable)
+Environment=SOMA_PHYSIO_LOG_INTERVAL=10
 
 # Security hardening
 NoNewPrivileges=true

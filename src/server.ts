@@ -83,6 +83,49 @@ function broadcastState(): void {
 setInterval(broadcastState, UPDATE_INTERVAL);
 
 //--------------------------------------------------------------
+// Periodic Physiological State Logging
+// Logs key metrics to journal/log file for monitoring
+//--------------------------------------------------------------
+
+const PHYSIO_LOG_INTERVAL = parseFloat(process.env.SOMA_PHYSIO_LOG_INTERVAL || '10') * 1000; // Default 10 seconds
+
+function logPhysiologicalState(): void {
+  const v = soma.getVitals();
+  
+  // Only log if there's something interesting happening (arousal > 5 or recent activity)
+  if (v.arousal < 5 && v.pleasure < 5 && v.orgasmicPressure < 1) {
+    return; // Skip logging when at baseline
+  }
+  
+  // Compact single-line format for easy scanning
+  const pnr = v.pointOfNoReturn ? ' ⚠️PNR' : '';
+  const orgasmWarning = v.orgasmicPressure > 70 ? ' 🔥CLOSE' : '';
+  
+  logger.info(
+    `📊 PHYSIO | ` +
+    `Arousal: ${v.arousal.toFixed(0)}% | ` +
+    `Pleasure: ${v.pleasure.toFixed(0)}% | ` +
+    `OrgasmPressure: ${v.orgasmicPressure.toFixed(0)}%${pnr}${orgasmWarning} | ` +
+    `Cumulative: ${v.cumulativePleasure.toFixed(1)} | ` +
+    `HR: ${v.heartRate.toFixed(0)}bpm | ` +
+    `Edge: ${v.edgePressure.toFixed(0)}% (x${v.edgeCount})`
+  );
+  
+  // More detailed log at debug level
+  logger.debug(
+    `   Details | ` +
+    `TimeHighArousal: ${v.timeAtHighArousal.toFixed(1)}s | ` +
+    `Trembling: ${v.trembling.toFixed(0)}% | ` +
+    `Refractory: ${v.refractoryIntensity.toFixed(0)}% | ` +
+    `Orgasms: ${v.orgasmCount}`
+  );
+}
+
+// Start periodic physiological logging
+setInterval(logPhysiologicalState, PHYSIO_LOG_INTERVAL);
+logger.info(`📊 Physiological logging enabled (interval: ${PHYSIO_LOG_INTERVAL / 1000}s)`);
+
+//--------------------------------------------------------------
 // HTTP Endpoints
 //--------------------------------------------------------------
 
