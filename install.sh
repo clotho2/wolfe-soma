@@ -7,7 +7,6 @@
 set -e
 
 INSTALL_DIR="/opt/wolfe-soma"
-LOG_DIR="/var/log/wolfe-soma"
 SERVICE_NAME="wolfe-soma"
 SERVICE_USER="clotho"
 MIN_NODE_VERSION=18
@@ -78,15 +77,13 @@ if ! check_node_version; then
     echo "  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -"
     echo "  sudo apt-get install -y nodejs"
     echo ""
-    echo "  # Or using nvm:"
-    echo "  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash"
-    echo "  source ~/.bashrc"
-    echo "  nvm install 20"
-    echo "  nvm use 20"
-    echo ""
     exit 1
   fi
 fi
+
+# Get the actual node path
+NODE_PATH=$(which node)
+echo "📍 Node.js location: $NODE_PATH"
 
 #--------------------------------------------------------------
 # Check if user exists
@@ -117,7 +114,6 @@ cp -r "$SCRIPT_DIR/package.json" "$INSTALL_DIR/"
 cp -r "$SCRIPT_DIR/package-lock.json" "$INSTALL_DIR/" 2>/dev/null || true
 cp -r "$SCRIPT_DIR/tsconfig.json" "$INSTALL_DIR/"
 cp -r "$SCRIPT_DIR/.env.example" "$INSTALL_DIR/"
-cp -r "$SCRIPT_DIR/wolfe-soma.service" "$INSTALL_DIR/"
 
 # Copy .env if it exists, otherwise use example
 if [ -f "$SCRIPT_DIR/.env" ]; then
@@ -149,14 +145,6 @@ echo "🧹 Cleaning dev dependencies..."
 npm prune --omit=dev
 
 #--------------------------------------------------------------
-# Create log directory
-#--------------------------------------------------------------
-
-echo "📝 Creating log directory..."
-mkdir -p "$LOG_DIR"
-chown -R "$SERVICE_USER:$SERVICE_USER" "$LOG_DIR"
-
-#--------------------------------------------------------------
 # Set ownership
 #--------------------------------------------------------------
 
@@ -164,11 +152,39 @@ echo "🔐 Setting permissions..."
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 
 #--------------------------------------------------------------
-# Install systemd service
+# Create systemd service file with correct node path
 #--------------------------------------------------------------
 
-echo "⚙️  Installing systemd service..."
-cp "$INSTALL_DIR/wolfe-soma.service" /etc/systemd/system/
+echo "⚙️  Creating systemd service..."
+cat > /etc/systemd/system/wolfe-soma.service << EOF
+[Unit]
+Description=Wolfe SOMA Physiological Simulation Service
+Documentation=https://github.com/wolfe/soma
+After=network.target
+
+[Service]
+Type=simple
+User=$SERVICE_USER
+Group=$SERVICE_USER
+WorkingDirectory=$INSTALL_DIR
+ExecStart=$NODE_PATH $INSTALL_DIR/dist/server.js
+Restart=always
+RestartSec=10
+
+# Use journald for logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wolfe-soma
+
+# Environment variables
+Environment=NODE_ENV=production
+Environment=SOMA_PORT=3002
+Environment=SOMA_UPDATE_INTERVAL=1.0
+Environment=LOG_LEVEL=info
+
+[Install]
+WantedBy=multi-user.target
+EOF
 
 # Reload systemd
 systemctl daemon-reload
@@ -179,7 +195,7 @@ systemctl daemon-reload
 
 echo "🚀 Enabling and starting service..."
 systemctl enable "$SERVICE_NAME"
-systemctl start "$SERVICE_NAME"
+systemctl restart "$SERVICE_NAME"
 
 # Wait a moment for service to start
 sleep 2
