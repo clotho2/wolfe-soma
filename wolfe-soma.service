@@ -1,35 +1,24 @@
 [Unit]
 Description=Wolfe SOMA Physiological Simulation Service
-Documentation=https://github.com/wolfe/soma
 After=network.target
 
 [Service]
 Type=simple
-User=clotho
-Group=clotho
 WorkingDirectory=/opt/wolfe-soma
-
-# Use env to find node in PATH, or specify full path
-# If using nvm, you may need to change this to the full path, e.g.:
-# ExecStart=/home/clotho/.nvm/versions/node/v20.x.x/bin/node dist/server.js
-ExecStart=/usr/bin/env node dist/server.js
-
+ExecStart=/usr/bin/node /opt/wolfe-soma/dist/server.js
 Restart=always
 RestartSec=10
 
-# Use journald for logging (simpler, no directory needed)
+# Logging via journald
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=wolfe-soma
 
-# Environment variables
+# Environment
 Environment=NODE_ENV=production
 Environment=SOMA_PORT=3002
 Environment=SOMA_UPDATE_INTERVAL=1.0
 Environment=LOG_LEVEL=info
-
-# Make sure PATH includes common node locations
-Environment=PATH=/usr/local/bin:/usr/bin:/bin
 
 [Install]
 WantedBy=multi-user.target
