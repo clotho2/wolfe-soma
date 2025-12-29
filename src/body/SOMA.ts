@@ -7,13 +7,6 @@
 
 import { logger } from "../utils/logger.js";
 
-// Declare NodeJS types for Timer
-declare global {
-  namespace NodeJS {
-    interface Timeout {}
-  }
-}
-
 //--------------------------------------------------------------
 // BODY ZONES - 19 trackable areas
 //--------------------------------------------------------------
