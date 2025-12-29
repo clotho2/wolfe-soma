@@ -13,8 +13,8 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   error: 3
 };
 
-const envLevel = (process.env.LOG_LEVEL?.toLowerCase() as LogLevel) || 'info';
-const currentLevel = LOG_LEVELS[envLevel] ?? LOG_LEVELS.info;
+const envLevel = ((process.env.LOG_LEVEL || '').toLowerCase() as LogLevel) || 'info';
+const currentLevel = LOG_LEVELS[envLevel] !== undefined ? LOG_LEVELS[envLevel] : LOG_LEVELS.info;
 
 function formatMessage(level: string, message: string): string {
   const timestamp = new Date().toISOString();
