@@ -127,18 +127,12 @@ else
 fi
 
 #--------------------------------------------------------------
-# Install Node.js dependencies
+# Install Node.js dependencies (all, including dev for build)
 #--------------------------------------------------------------
 
 echo "📥 Installing Node.js dependencies..."
 cd "$INSTALL_DIR"
-npm install --omit=dev
-
-# Install TypeScript globally if not present (for building)
-if ! command -v tsc &> /dev/null; then
-  echo "📥 Installing TypeScript..."
-  npm install -g typescript
-fi
+npm install
 
 #--------------------------------------------------------------
 # Build TypeScript
@@ -146,6 +140,13 @@ fi
 
 echo "🔨 Building TypeScript..."
 npm run build
+
+#--------------------------------------------------------------
+# Remove dev dependencies for production
+#--------------------------------------------------------------
+
+echo "🧹 Cleaning dev dependencies..."
+npm prune --omit=dev
 
 #--------------------------------------------------------------
 # Create log directory
