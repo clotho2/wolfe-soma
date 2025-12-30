@@ -11,8 +11,11 @@ WorkingDirectory=/opt/aicara/wolfe-soma
 ExecStart=/usr/bin/node dist/server.js
 Restart=always
 RestartSec=10
-StandardOutput=append:/var/log/wolfe-soma/output.log
-StandardError=append:/var/log/wolfe-soma/error.log
+
+# Use journal for logging (access with: journalctl -u wolfe-soma -f)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wolfe-soma
 
 # Environment variables
 Environment=NODE_ENV=production
@@ -27,7 +30,6 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/log/wolfe-soma
 
 [Install]
 WantedBy=multi-user.target
