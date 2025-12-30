@@ -560,12 +560,18 @@ export class SOMA {
 
     // Track stimulus history for STRICT orgasm gating
     // Expanded tracking with genital/orgasm contribution flags
-    const isGenital = type === StimulusType.PENETRATION || 
-                      zone === BodyZone.GENITALS || 
-                      zone === BodyZone.PELVIS;
+    // 
+    // STRICT RULE: Only DIRECT genital contact or penetration counts!
+    // Pelvis, inner thighs, etc. can arouse but do NOT build orgasm pressure.
+    // This prevents clothed grinding/hip movement from triggering orgasms.
     
-    // Only genital stimulation with sufficient intensity contributes to orgasm
-    const contribuesToOrgasm = isGenital && intensity > 30;
+    const isGenital = type === StimulusType.PENETRATION || 
+                      zone === BodyZone.GENITALS;
+    
+    // Only DIRECT genital stimulation with HIGH intensity contributes to orgasm
+    // Penetration always counts, genital touch needs intensity > 50
+    const contribuesToOrgasm = type === StimulusType.PENETRATION || 
+                               (zone === BodyZone.GENITALS && intensity > 50);
     
     this.recentStimuli.push({ 
       type, 
@@ -593,17 +599,17 @@ export class SOMA {
     if (type === StimulusType.RELEASE) {
       const currentPressure = this.orgasmState.orgasmicPressure;
       
-      // Orgasm requires pressure > 70% (which requires genital stimulation)
-      if (currentPressure < 70) {
-        logger.warn(`⚠️ Release blocked - orgasm pressure too low (${currentPressure.toFixed(1)}%). Need 70%+. Converting to edge.`);
+      // Orgasm requires pressure > 80% (which requires sustained genital stimulation)
+      if (currentPressure < 80) {
+        logger.warn(`⚠️ Release blocked - orgasm pressure too low (${currentPressure.toFixed(1)}%). Need 80%+. Converting to edge.`);
         // Convert to edge instead - they're aroused but not ready
         this.applyEdge(40);
         return;
       }
       
       // Additional check: If at PNR, release is automatic and can proceed
-      // If NOT at PNR but pressure is 70-85%, they can force it but it's weaker
-      if (!this.orgasmState.pointOfNoReturn && currentPressure < 85) {
+      // If NOT at PNR but pressure is 80-90%, they can force it but it's weaker
+      if (!this.orgasmState.pointOfNoReturn && currentPressure < 90) {
         logger.info(`💫 Forced release at ${currentPressure.toFixed(1)}% pressure (not at PNR) - may be less intense`);
       }
     }
@@ -1716,29 +1722,34 @@ export class SOMA {
     }
 
     // =============================================================
-    // CUMULATIVE PLEASURE - ONLY builds with genital stimulation!
+    // CUMULATIVE PLEASURE - ONLY builds with DIRECT genital stimulation!
+    // =============================================================
+    // 
+    // Requires: genital stim + high arousal (80%+) + high pleasure (70%+)
+    // Builds SLOWLY - orgasm should take sustained effort, not quick bursts
     // =============================================================
     
-    if (hasGenitalStim && currentArousal > 70 && currentPleasure > 60) {
-      // Check for recent GENITAL stimulation specifically
+    if (hasGenitalStim && currentArousal > 80 && currentPleasure > 70) {
+      // Check for recent DIRECT genital stimulation specifically
       const recentGenitalStim = this.recentStimuli.filter(s => {
         const age = (now - s.timestamp) / 1000;
         return age < 5 && s.contribuesToOrgasm;  // Recent + contributes to orgasm
       });
       
       if (recentGenitalStim.length > 0) {
-        // Build cumulative pleasure ONLY during active genital stimulation
-        const pleasureGain = (currentArousal / 100) * (currentPleasure / 100) * deltaSeconds * 3;
+        // Build cumulative pleasure SLOWLY during active genital stimulation
+        // Reduced from 3 to 1.5 - requires more sustained stimulation
+        const pleasureGain = (currentArousal / 100) * (currentPleasure / 100) * deltaSeconds * 1.5;
         this.orgasmState.cumulativePleasure += pleasureGain;
         logger.debug(`📈 Cumulative pleasure building: +${pleasureGain.toFixed(2)} (total: ${this.orgasmState.cumulativePleasure.toFixed(1)})`);
       } else {
-        // Genital stim detected but not active right now - slow decay
-        this.orgasmState.cumulativePleasure *= 0.97;
+        // Genital stim detected but not active right now - decay
+        this.orgasmState.cumulativePleasure *= 0.95;
       }
     } else {
       // NO genital stimulation = cumulative pleasure ONLY decays, never builds
-      // Faster decay when not being touched genitally
-      this.orgasmState.cumulativePleasure *= 0.90;
+      // Fast decay when not being touched genitally
+      this.orgasmState.cumulativePleasure *= 0.85;
     }
 
     // =============================================================
@@ -1800,44 +1811,69 @@ export class SOMA {
       // =========================================================
       // WITH GENITAL STIMULATION - Full pressure calculation
       // =========================================================
+      // 
+      // Orgasm requires SUSTAINED direct genital stimulation.
+      // The weights are tuned so that:
+      // - Quick touches won't trigger orgasm
+      // - Sustained stimulation over 60+ seconds builds pressure
+      // - PNR requires ~90%+ pressure (very close to edge)
+      // =========================================================
       
-      // 1. AROUSAL PRESSURE (0-30 points) - Only when > 70%
-      const arousalPressure = Math.max(0, currentArousal - 70);
+      // 1. AROUSAL PRESSURE (0-20 points) - Only when > 80%
+      // Requires HIGH arousal, not just moderate
+      const arousalPressure = Math.max(0, (currentArousal - 80) * 1.0);
       
-      // 2. PLEASURE PRESSURE (0-25 points) - Current pleasure state
-      const pleasurePressure = Math.max(0, currentPleasure - 50) * 0.5;
+      // 2. PLEASURE PRESSURE (0-15 points) - Current pleasure state
+      // Requires pleasure > 70%, reduced weight
+      const pleasurePressure = Math.max(0, (currentPleasure - 70) * 0.5);
       
-      // 3. CUMULATIVE PRESSURE (0-30 points) - Built-up pleasure over time
-      const cumulativePressure = Math.min(30, this.orgasmState.cumulativePleasure / 5);
+      // 3. CUMULATIVE PRESSURE (0-35 points) - THE PRIMARY DRIVER
+      // This is what requires sustained stimulation
+      // Needs cumulative pleasure > 50 to even start contributing
+      const cumulativePressure = Math.min(35, Math.max(0, this.orgasmState.cumulativePleasure - 50) / 4);
       
       // 4. DURATION PRESSURE (0-15 points) - Time at high arousal
-      const durationPressure = Math.min(15, this.orgasmState.timeAtHighArousal * 0.5);
+      // Only counts time above 90% arousal, requires 30+ seconds
+      const effectiveDuration = Math.max(0, this.orgasmState.timeAtHighArousal - 30);
+      const durationPressure = Math.min(15, effectiveDuration * 0.3);
       
-      // 5. STIMULATION PRESSURE (0-20 points) - What's happening NOW
-      const stimulationPressure = this.calculateStimulationPressure();
+      // 5. STIMULATION PRESSURE (0-15 points) - What's happening NOW
+      // Reduced cap, requires active ongoing stimulation
+      const stimulationPressure = Math.min(15, this.calculateStimulationPressure());
       
-      // 6. ZONE PRESSURE (0-10 points) - Genital/pelvis arousal
+      // 6. ZONE PRESSURE (0-10 points) - Genital arousal specifically
       const zonePressure = this.calculateZonePressure();
       
       // 7. REFRACTORY PENALTY (-30 to 0 points) - Recent orgasm
       const refractoryPenalty = -this.orgasmState.refractoryIntensity * 0.3;
       
       // TOTAL PRESSURE (0-100) - No cap with genital stimulation!
-      this.orgasmState.orgasmicPressure = Math.max(0, Math.min(100,
-        arousalPressure +
-        pleasurePressure +
-        cumulativePressure +
-        durationPressure +
-        stimulationPressure +
-        zonePressure +
-        refractoryPenalty
-      ));
+      const rawPressure = arousalPressure +
+                          pleasurePressure +
+                          cumulativePressure +
+                          durationPressure +
+                          stimulationPressure +
+                          zonePressure +
+                          refractoryPenalty;
+      
+      this.orgasmState.orgasmicPressure = Math.max(0, Math.min(100, rawPressure));
+      
+      // Debug logging to track pressure components
+      if (this.orgasmState.orgasmicPressure > 50) {
+        logger.debug(
+          `🔥 Pressure breakdown: arousal=${arousalPressure.toFixed(1)} + ` +
+          `pleasure=${pleasurePressure.toFixed(1)} + cumulative=${cumulativePressure.toFixed(1)} + ` +
+          `duration=${durationPressure.toFixed(1)} + stim=${stimulationPressure.toFixed(1)} + ` +
+          `zone=${zonePressure.toFixed(1)} + refract=${refractoryPenalty.toFixed(1)} = ${rawPressure.toFixed(1)}`
+        );
+      }
     }
 
-    // POINT OF NO RETURN - Triggers ONLY when pressure > 85% AND genital stimulation active
+    // POINT OF NO RETURN - Triggers ONLY when pressure > 90% AND genital stimulation active
+    // Increased threshold from 85% to 90% - requires sustained buildup
     if (!this.orgasmState.pointOfNoReturn) {
       // STRICT GATE: Both high pressure AND active genital stimulation required
-      if (this.orgasmState.orgasmicPressure > 85 && hasGenitalStim) {
+      if (this.orgasmState.orgasmicPressure > 90 && hasGenitalStim) {
         this.orgasmState.pointOfNoReturn = true;
         this.orgasmState.pointOfNoReturnTime = now;
         logger.info(`🌊 POINT OF NO RETURN - Pressure: ${Math.round(this.orgasmState.orgasmicPressure)}% (with genital stimulation)`);
@@ -1848,16 +1884,16 @@ export class SOMA {
     }
 
     // Warning when orgasm is imminent (within ~30 seconds)
-    // Only warn if there's active genital stimulation
-    if (!this.orgasmState.orgasmImminentWarning && this.orgasmState.orgasmicPressure > 75 && hasGenitalStim) {
+    // Only warn if there's active genital stimulation and pressure > 85%
+    if (!this.orgasmState.orgasmImminentWarning && this.orgasmState.orgasmicPressure > 85 && hasGenitalStim) {
       this.orgasmState.orgasmImminentWarning = true;
       logger.info("⚠️  ORGASM IMMINENT - Pressure at " + Math.round(this.orgasmState.orgasmicPressure) + "% (with genital stimulation)");
     }
     
-    // Reset warning if genital stimulation stops
-    if (this.orgasmState.orgasmImminentWarning && !hasGenitalStim && this.orgasmState.orgasmicPressure < 60) {
+    // Reset warning if genital stimulation stops or pressure drops
+    if (this.orgasmState.orgasmImminentWarning && (!hasGenitalStim || this.orgasmState.orgasmicPressure < 70)) {
       this.orgasmState.orgasmImminentWarning = false;
-      logger.debug("⏸️ Orgasm warning reset - stimulation stopped, pressure dropping");
+      logger.debug("⏸️ Orgasm warning reset - stimulation stopped or pressure dropped");
     }
 
     // =============================================================
@@ -2598,9 +2634,20 @@ You're completely present, completely his, completely yourself.]`;
   // GENITAL STIMULATION CHECK - The SOLE gate for orgasm capability
   //--------------------------------------------------------------
   // 
-  // This function determines if orgasm pressure can build past 50%.
-  // Uses the new expanded stimulus history with isGenital and
-  // contribuesToOrgasm flags for clean, accurate detection.
+  // STRICT RULE: Only DIRECT genital contact or penetration counts!
+  // 
+  // What DOES count:
+  // - Penetration (any intensity)
+  // - Direct genital touch (intensity > 50)
+  //
+  // What does NOT count:
+  // - Pelvis stimulation (clothed grinding, hip movement)
+  // - Inner thigh touching
+  // - Any other erogenous zone
+  //
+  // This prevents scenarios like "sat on lap and rocked hips" from
+  // building toward orgasm. They can be aroused, feel pleasure, but
+  // orgasm requires DIRECT genital contact.
   //--------------------------------------------------------------
 
   private hasRecentGenitalStimulation(): boolean {
@@ -2611,11 +2658,11 @@ You're completely present, completely his, completely yourself.]`;
       return true;
     }
     
-    // Use the new contribuesToOrgasm flag for clean detection
-    // Check stimuli within last 30 seconds
+    // Use the contribuesToOrgasm flag for clean detection
+    // Check stimuli within last 20 seconds (tighter window)
     const recentOrgasmContributors = this.recentStimuli.filter(s => {
       const age = (now - s.timestamp) / 1000;
-      return age < 30 && s.contribuesToOrgasm;
+      return age < 20 && s.contribuesToOrgasm;
     });
     
     if (recentOrgasmContributors.length === 0) {
@@ -2623,28 +2670,26 @@ You're completely present, completely his, completely yourself.]`;
     }
     
     // Calculate the total genital stimulation "score"
-    // This creates a weighted system where recent, intense stimulation counts more
+    // STRICT: Only penetration and direct genital touch count
     let genitalScore = 0;
     
     for (const s of recentOrgasmContributors) {
       const age = (now - s.timestamp) / 1000;
-      const recency = Math.max(0, 1 - (age / 30)); // Decays over 30 seconds
+      const recency = Math.max(0, 1 - (age / 20)); // Decays over 20 seconds
       
       if (s.type === StimulusType.PENETRATION) {
         // Penetration is the primary orgasm driver
-        genitalScore += 50 * recency;
+        genitalScore += 40 * recency;
       } else if (s.zone === BodyZone.GENITALS) {
-        // Direct genital touch - very effective
-        genitalScore += (s.intensity / 100) * 40 * recency;
-      } else if (s.zone === BodyZone.PELVIS) {
-        // Pelvis - secondary but still counts
-        genitalScore += (s.intensity / 100) * 20 * recency;
+        // Direct genital touch - effective but requires intensity
+        genitalScore += (s.intensity / 100) * 30 * recency;
       }
+      // PELVIS NO LONGER COUNTS - removed from orgasm gating
     }
     
-    // Need at least 20 points of genital stimulation score
-    // This prevents very light/brief touches from counting
-    return genitalScore >= 20;
+    // Need at least 25 points of genital stimulation score
+    // This requires sustained, direct contact
+    return genitalScore >= 25;
   }
 
   private hasRecentPhysicalContact(): boolean {
